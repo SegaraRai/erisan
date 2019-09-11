@@ -43,10 +43,6 @@ namespace {
     std::wcerr << L"Copyright (c) 1998-2014 Leshade Entis, Entis soft."sv << std::endl;
     return 2;
   }
-
-  void WriteFileFromStream(SSystem::SFileInterface* destFile, SSystem::SInputStream* srcStream) {
-    
-  }
 }
 
 
@@ -84,58 +80,72 @@ int xwmain(int argc, wchar_t* argv[]) {
     }
   }
 
-  auto inputFile = SSystem::SFileOpener::DefaultNewOpenFile(useStdin ? L"<stdin>" : inFile.c_str(), SSystem::SFileOpener::shareRead);
-  auto outputFile = SSystem::SFileOpener::DefaultNewOpenFile(useStdout ? L"<stdout>" : outFile.c_str(), SSystem::SFileOpener::modeCreateFile);
+  SSystem::SFileInterface* inputFile = nullptr;
+  SSystem::SFileInterface* outputFile = nullptr;
 
-  switch (mode) {
-    case Mode::Decode:
-    {
-      ERISA::SGLDecodeBitStream	bitStream(BufferSize);
-      bitStream.AttachInputStream(inputFile);
+  try {
+    inputFile = SSystem::SFileOpener::DefaultNewOpenFile(useStdin ? L"<stdin>" : inFile.c_str(), SSystem::SFileOpener::shareRead);
+    outputFile = SSystem::SFileOpener::DefaultNewOpenFile(useStdout ? L"<stdout>" : outFile.c_str(), SSystem::SFileOpener::modeCreateFile);
 
-      ERISA::SGLERISANDecodeContext	decoder(&bitStream);
-      decoder.PrepareToDecodeERISANCode();
+    auto buffer = std::make_unique<std::byte[]>(BufferSize);
 
-      auto buffer = std::make_unique<std::byte[]>(BufferSize);
+    switch (mode) {
+      case Mode::Decode:
+      {
+        ERISA::SGLDecodeBitStream	bitStream(BufferSize);
+        bitStream.AttachInputStream(inputFile);
 
-      std::size_t writtenSize = 0;
-      while (!decoder.GetEOFFlag()) {
-        const auto readSize = decoder.Read(buffer.get(), BufferSize);
-        outputFile->Write(buffer.get(), readSize);
-        writtenSize += readSize;
+        ERISA::SGLERISANDecodeContext	decodeContext(&bitStream);
+        decodeContext.PrepareToDecodeERISANCode();
+
+        int zeroCount = 0;
+        while (!decodeContext.GetEOFFlag()) {
+          const auto readSize = decodeContext.Read(buffer.get(), BufferSize);
+          if (readSize == 0) {
+            zeroCount++;
+            if (zeroCount > 1) {
+              // not sure if this is correct
+              throw std::runtime_error("invalid input"s);
+            }
+            continue;
+          }
+          zeroCount = 0;
+          outputFile->Write(buffer.get(), readSize);
+        }
+
+        break;
       }
 
-      break;
+      case Mode::Encode:
+      {
+        ERISA::SGLEncodeBitStream	bitStream(BufferSize);
+        bitStream.AttachOutputStream(outputFile);
+
+        ERISA::SGLERISANEncodeContext	encodeContext(&bitStream);
+        encodeContext.PrepareToEncodeERISANCode();
+
+        while (true) {
+          const auto readSize = inputFile->Read(buffer.get(), BufferSize);
+          if (readSize == 0) {
+            // EOF
+            break;
+          }
+          encodeContext.Write(buffer.get(), readSize);
+        }
+
+        encodeContext.EncodeERISANCodeEOF();
+        encodeContext.FinishERISACode();
+
+        bitStream.Flushout();
+
+        break;
+      }
     }
+  } catch (...) {
+    delete outputFile;
+    delete inputFile;
 
-    case Mode::Encode:
-      ERISA::SGLEncodeBitStream	bitStream(BufferSize);
-      bitStream.AttachOutputStream(outputFile);
-
-      ERISA::SGLERISANEncodeContext	encoder(&bitStream);
-      encoder.PrepareToEncodeERISANCode();
-
-      auto buffer = std::make_unique<std::byte[]>(BufferSize);
-
-      const auto srcSize = inputFile->GetLength();
-      if (srcSize < 0) {
-        throw std::runtime_error("invalid srcSize"s);
-      }
-
-      std::int64_t totalReadSize = 0;
-      std::size_t writtenSize = 0;
-      while (totalReadSize != srcSize) {
-        const auto readSize = std::min(srcSize - totalReadSize, static_cast<std::int64_t>(BufferSize));
-        inputFile->Read(buffer.get(), readSize);
-        totalReadSize += readSize;
-        writtenSize += encoder.Write(buffer.get(), static_cast<std::size_t>(readSize));
-      }
-      encoder.EncodeERISANCodeEOF();
-      encoder.FinishERISACode();
-
-      bitStream.Flushout();
-
-      break;
+    throw;
   }
 
   delete outputFile;
