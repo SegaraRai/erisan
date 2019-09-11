@@ -32,7 +32,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
   SSystem::Initialize();
 
-  ERISA::sclfInitializeMatrix();
+  //ERISA::sclfInitializeMatrix();
   //SakuraGL::SGLImageDecoderManager::Initialzie();
   //SakuraGL::SGLImageEncoderManager::Initialzie();
   //SakuraGL::SGLAudioDecoderManager::Initialzie();
@@ -45,10 +45,10 @@ int wmain(int argc, wchar_t* argv[]) {
     ret = xwmain(argc, argv);
   } catch (std::exception exception) {
     std::cerr << exception.what() << std::endl;
-    ret = 11;
+    ret = 1;
   } catch (...) {
     std::wcerr << L"an error occurred"sv << std::endl;
-    ret = 11;
+    ret = 1;
   }
 #else
   ret = xwmain(argc, argv);
