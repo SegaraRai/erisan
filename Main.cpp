@@ -85,7 +85,14 @@ int xwmain(int argc, wchar_t* argv[]) {
 
   try {
     inputFile = SSystem::SFileOpener::DefaultNewOpenFile(useStdin ? L"<stdin>" : inFile.c_str(), SSystem::SFileOpener::shareRead);
+    if (!inputFile) {
+      throw std::runtime_error("failed to open input file"s);
+    }
+
     outputFile = SSystem::SFileOpener::DefaultNewOpenFile(useStdout ? L"<stdout>" : outFile.c_str(), SSystem::SFileOpener::modeCreateFile);
+    if (!outputFile) {
+      throw std::runtime_error("failed to open output file"s);
+    }
 
     auto buffer = std::make_unique<std::byte[]>(BufferSize);
 
